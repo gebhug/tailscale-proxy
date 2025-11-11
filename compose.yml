@@ -1,0 +1,16 @@
+
+services:
+  tailscale-proxy:
+    image: ghcr.io/gebhug/tailscale-proxy:latest
+    container_name: tailscale-proxy-1
+    hostname: name-you-want-before-your-tailscale-domain
+    environment:
+      - TS_AUTHKEY=your_tskey
+      - TS_SERVE_PROXY=http://proxied-service-1:80
+      - TS_SERVE_ALLOWFUNNEL=true
+      - TS_STATE_DIR=/var/lib/tailscale
+  getting-started:
+    container_name: proxied-service-1
+    stdin_open: true
+    tty: true
+    image: docker/getting-started
