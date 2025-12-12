@@ -6,8 +6,8 @@ name: Docker Multi-Architecture Build
 # documentation.
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
+#  schedule:
+#    - cron: '0 0 * * *'
   push:
     tags: [ 'v*.*.*' ]
 
