@@ -1,4 +1,4 @@
-FROM tailscale/tailscale
+FROM tailscale/tailscale:v1.92.1
 
 WORKDIR /config
 
