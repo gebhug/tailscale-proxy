@@ -49,13 +49,16 @@ The included `compose.yml` provides a complete example of how to use this contai
        environment:
          - TS_AUTHKEY=your_tskey                             # Your Tailscale auth key
          - TS_SERVE_PROXY=http://proxied-service-1:80        # Backend service to proxy
-         - TS_SERVE_ALLOWFUNNEL=true                         # Enable public access via Funnel
+         - TS_SERVE_ALLOWFUNNEL=false                         # Enable public access via Funnel
          - TS_STATE_DIR=/var/lib/tailscale
-     
+       volumes:
+         - tailscale-state:/var/lib/tailscale
      # Your actual service that you want to proxy
      getting-started:
        container_name: proxied-service-1
        image: docker/getting-started
+   volumes:
+      tailscale-state:
    ```
 
 3. **Start the services**:
