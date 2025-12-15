@@ -1,5 +1,4 @@
-# Workflow: erstellt bei Push in main einen neuen Release v1.0.x und einen Tag
-name: Create v1.0.x release on push to main
+name: Auto Release v1.0.x
 
 on:
   push:
@@ -7,93 +6,49 @@ on:
       - main
 
 permissions:
-  contents: write  # nötig, um Tags/Releases anzulegen
+  contents: write
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      # 1. Code auschecken (Wichtig: fetch-depth: 0, um alle Tags zu sehen)
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Determine next v1.0.x, create tag and release
-        uses: actions/github-script@v6
+      # 2. Nächste Version berechnen
+      - name: Calculate next version
+        id: calculate_version
+        run: |
+          # Suche nach dem letzten Tag, der mit v1.0. beginnt
+          # Sortiere absteigend nach Version, nimm den ersten
+          LAST_TAG=$(git tag --list 'v1.0.*' --sort=-v:refname | head -n 1)
+
+          if [ -z "$LAST_TAG" ]; then
+            # Wenn kein Tag existiert, starte mit v1.0.0
+            echo "Kein vorheriger v1.0.x Tag gefunden. Starte mit v1.0.0"
+            NEW_TAG="v1.0.0"
+          else
+            echo "Letzter Tag war: $LAST_TAG"
+            # Extrahiere die letzte Zahl nach dem letzten Punkt
+            LAST_VERSION=${LAST_TAG##*.}
+            # Addiere 1
+            NEXT_VERSION=$((LAST_VERSION + 1))
+            NEW_TAG="v1.0.$NEXT_VERSION"
+          fi
+
+          echo "Neuer Tag wird sein: $NEW_TAG"
+          # Setze die Variable für den nächsten Schritt
+          echo "tag_name=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      # 3. Release und Tag erstellen
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
-          script: |
-            const core = require('@actions/core');
-
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const perPage = 100;
-
-            // 1) Ermittle höchste vorhandene v1.0.x Release-Nummer
-            let max = -1;
-            let page = 1;
-            while (true) {
-              const releases = await github.rest.repos.listReleases({
-                owner,
-                repo,
-                per_page: perPage,
-                page
-              });
-              if (!releases || !releases.data || releases.data.length === 0) break;
-              for (const r of releases.data) {
-                const m = /^v1\.0\.(\d+)$/.exec(r.tag_name);
-                if (m) {
-                  const n = parseInt(m[1], 10);
-                  if (!Number.isNaN(n) && n > max) max = n;
-                }
-              }
-              if (releases.data.length < perPage) break;
-              page++;
-            }
-
-            // 2) Nächste Nummer (falls nichts vorhanden -> 1)
-            let next = (max >= 0) ? max + 1 : 1;
-            let tag = `v1.0.${next}`;
-
-            // 3) Falls Tag bereits existiert (z.B. Race), weiter inkrementieren bis freier Tag
-            // (Abfangen existierender git refs)
-            while (true) {
-              try {
-                await github.rest.git.getRef({
-                  owner,
-                  repo,
-                  ref: `refs/tags/${tag}`
-                });
-                // existiert -> inkrementieren und prüfen erneut
-                core.info(`Tag ${tag} exists, incrementing...`);
-                next++;
-                tag = `v1.0.${next}`;
-              } catch (err) {
-                if (err.status === 404) {
-                  // nicht gefunden -> frei zum anlegen
-                  break;
-                } else {
-                  throw err;
-                }
-              }
-            }
-
-            // 4) Erstelle Tag (lightweight ref) auf dem aktuellen Commit und erstelle Release
-            await github.rest.git.createRef({
-              owner,
-              repo,
-              ref: `refs/tags/${tag}`,
-              sha: context.sha
-            });
-
-            const release = await github.rest.repos.createRelease({
-              owner,
-              repo,
-              tag_name: tag,
-              name: tag,
-              body: `Automatisch erstellter Release ${tag}`,
-              draft: false,
-              prerelease: false
-            });
-
-            core.info(`Created tag ${tag} and release ${release.data.html_url}`);
-            return { tag };
+          tag_name: ${{ steps.calculate_version.outputs.tag_name }}
+          name: Release ${{ steps.calculate_version.outputs.tag_name }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
