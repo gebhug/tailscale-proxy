@@ -30,16 +30,33 @@ jobs:
       - name: Calculate next version
         id: calculate_version
         run: |
-          LAST_TAG=$(git tag --list 'v1.0.*' --sort=-v:refname | head -n 1)
+          # Version aus Dockerfile lesen (z.B. v1.90.9)
+          TS_VERSION=$(grep 'FROM tailscale/tailscale:' Dockerfile | cut -d':' -f2)
+          echo "Detected Tailscale version: $TS_VERSION"
 
-          if [ -z "$LAST_TAG" ]; then
-            echo "Kein vorheriger v1.0.x Tag gefunden. Starte mit v1.0.0"
-            NEW_TAG="v1.0.0"
+          # Prüfen ob der Basis-Tag existiert
+          if ! git tag --list "$TS_VERSION" | grep -q "^$TS_VERSION$"; then
+            echo "Basis-Version $TS_VERSION existiert noch nicht. Nutze sie als Tag."
+            NEW_TAG="$TS_VERSION"
           else
-            echo "Letzter Tag war: $LAST_TAG"
-            LAST_VERSION=${LAST_TAG##*.}
-            NEXT_VERSION=$((LAST_VERSION + 1))
-            NEW_TAG="v1.0.$NEXT_VERSION"
+            echo "Basis-Version $TS_VERSION existiert bereits. Suche nach Fix-Versionen."
+            
+            # Suche nach existierenden Fix-Tags (z.B. v1.90.9-fix1)
+            # Sortierung -v:refname hilft, aber bei Zahlen wie 1 vs 10 müssen wir aufpassen.
+            # Wir extrahieren die höchste Nummer.
+            
+            LAST_FIX_TAG=$(git tag --list "${TS_VERSION}-fix*" --sort=-v:refname | head -n 1)
+
+            if [ -z "$LAST_FIX_TAG" ]; then
+              echo "Keine Fix-Tags gefunden. Start mit fix1."
+              NEW_TAG="${TS_VERSION}-fix1"
+            else
+              echo "Letzter Fix-Tag war: $LAST_FIX_TAG"
+              # Nummer extrahieren (alles nach -fix)
+              LAST_NUM=${LAST_FIX_TAG##*-fix}
+              NEXT_NUM=$((LAST_NUM + 1))
+              NEW_TAG="${TS_VERSION}-fix${NEXT_NUM}"
+            fi
           fi
 
           echo "Neuer Tag wird sein: $NEW_TAG"
