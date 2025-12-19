@@ -30,8 +30,16 @@ jobs:
       - name: Calculate next version
         id: calculate_version
         run: |
-          # Version aus Dockerfile lesen (z.B. v1.90.9)
-          TS_VERSION=$(grep 'FROM ghcr.io/tailscale/tailscale:v1.92.3:' Dockerfile | cut -d':' -f2)
+          # Version aus Dockerfile lesen. 
+          # Wir suchen nach "tailscale/tailscale:", egal was davor steht (ghcr.io etc.)
+          # awk nimmt den Teil nach dem Doppelpunkt, cut entfernt evtl. " AS ..." Zusätze
+          TS_VERSION=$(grep 'tailscale/tailscale:' Dockerfile | head -n 1 | awk -F ':' '{print $2}' | cut -d' ' -f1)
+          
+          if [ -z "$TS_VERSION" ]; then
+            echo "Fehler: Konnte Version nicht aus Dockerfile lesen!"
+            exit 1
+          fi
+          
           echo "Detected Tailscale version: $TS_VERSION"
 
           # Prüfen ob der Basis-Tag existiert
@@ -42,9 +50,6 @@ jobs:
             echo "Basis-Version $TS_VERSION existiert bereits. Suche nach Fix-Versionen."
             
             # Suche nach existierenden Fix-Tags (z.B. v1.90.9-fix1)
-            # Sortierung -v:refname hilft, aber bei Zahlen wie 1 vs 10 müssen wir aufpassen.
-            # Wir extrahieren die höchste Nummer.
-            
             LAST_FIX_TAG=$(git tag --list "${TS_VERSION}-fix*" --sort=-v:refname | head -n 1)
 
             if [ -z "$LAST_FIX_TAG" ]; then
