@@ -31,7 +31,7 @@ jobs:
         id: calculate_version
         run: |
           # Version aus Dockerfile lesen (z.B. v1.90.9)
-          TS_VERSION=$(grep 'FROM tailscale/tailscale:' Dockerfile | cut -d':' -f2)
+          TS_VERSION=$(grep 'FROM ghcr.io/tailscale/tailscale:v1.92.3:' Dockerfile | cut -d':' -f2)
           echo "Detected Tailscale version: $TS_VERSION"
 
           # Prüfen ob der Basis-Tag existiert
