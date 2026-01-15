@@ -1,0 +1,141 @@
+name: Automated Release & Publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile
+      - entrypoint.sh
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: write      # Required for creating the Release
+  packages: write      # Required for uploading to GHCR
+  id-token: write      # Required for Cosign OIDC identity
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important: Required to fetch all history for git tags
+
+      # ----------------------------------------------------------------
+      # 1. VERSION CALCULATION
+      # ----------------------------------------------------------------
+      - name: Calculate next version
+        id: version
+        run: |
+          # Read version from Dockerfile.
+          # We search for "tailscale/tailscale:", take the second part (version), and cut off any " AS ..." suffixes.
+          BASE_VER=$(awk -F: '/tailscale\/tailscale:/ {print $2; exit}' Dockerfile | cut -d' ' -f1)
+          
+          if [ -z "$BASE_VER" ]; then
+            echo "::error::Could not extract version from Dockerfile!"
+            exit 1
+          fi
+          
+          echo "Detected Base Version from Dockerfile: $BASE_VER"
+
+          # Check if the exact base tag already exists in git
+          if git tag --list "$BASE_VER" | grep -q "^$BASE_VER$"; then
+             echo "Base version $BASE_VER exists. Searching for fix-versions..."
+             
+             # Search for existing fix tags (e.g., v1.90.9-fix1), sorted descending
+             LAST_FIX=$(git tag --list "${BASE_VER}-fix*" --sort=-v:refname | head -n 1)
+
+             if [ -z "$LAST_FIX" ]; then
+                echo "No fix tags found. Starting with -fix1."
+                NEW_TAG="${BASE_VER}-fix1"
+             else
+                echo "Last fix tag was: $LAST_FIX"
+                # Extract the number (everything after -fix)
+                LAST_NUM=${LAST_FIX##*-fix}
+                # Increment number using bash arithmetic
+                NEXT_NUM=$((LAST_NUM + 1))
+                NEW_TAG="${BASE_VER}-fix${NEXT_NUM}"
+             fi
+          else
+             echo "Base version does not exist yet. Using base version as tag."
+             NEW_TAG="$BASE_VER"
+          fi
+
+          echo "Final calculated tag: $NEW_TAG"
+          # Write to GITHUB_OUTPUT for subsequent steps
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      # ----------------------------------------------------------------
+      # 2. ENVIRONMENT SETUP
+      # ----------------------------------------------------------------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.5.0
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------------
+      # 3. BUILD & PUSH
+      # ----------------------------------------------------------------
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # We explicitly define the tags here: the calculated tag AND latest
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ----------------------------------------------------------------
+      # 4. SIGNING (COSIGN)
+      # ----------------------------------------------------------------
+      - name: Sign the published Docker image
+        env:
+          # We define the fully qualified image name with the specific tag
+          TAG_URI: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        # Signing the digest ensures we sign the exact immutable artifact we just built
+        run: cosign sign --yes "${TAG_URI}@${DIGEST}"
+
+      # ----------------------------------------------------------------
+      # 5. GITHUB RELEASE
+      # ----------------------------------------------------------------
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
