@@ -1,4 +1,4 @@
-[![Docker Multi-Architecture Build](https://github.com/gebhug/tailscale-proxy/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/gebhug/tailscale-proxy/actions/workflows/docker-publish.yml)
+[![Automated Release & Publish](https://github.com/gebhug/tailscale-proxy/actions/workflows/release.yml/badge.svg)](https://github.com/gebhug/tailscale-proxy/actions/workflows/release.yml)
 
 # tailscale-proxy
 
