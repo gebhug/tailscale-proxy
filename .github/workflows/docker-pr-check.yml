@@ -1,0 +1,51 @@
+name: Docker PR Check
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - entrypoint.sh
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------
+      # 1. VERSION VALIDATION
+      # ------------------------------------------------
+      - name: Validate base version from Dockerfile
+        run: |
+          BASE_VER=$(awk -F: '/tailscale\/tailscale:/ {print $2; exit}' Dockerfile | cut -d' ' -f1)
+
+          if [ -z "$BASE_VER" ]; then
+            echo "::error::Could not extract version from Dockerfile"
+            exit 1
+          fi
+
+          echo "Detected base version $BASE_VER"
+
+      # ------------------------------------------------
+      # 2. BUILD ENV
+      # ------------------------------------------------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ------------------------------------------------
+      # 3. BUILD ONLY NO PUSH
+      # ------------------------------------------------
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
