@@ -1,5 +1,7 @@
 {
   "extends": ["config:recommended"],
   "enabledManagers": ["dockerfile"],
-  "automerge": true
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true
 }
