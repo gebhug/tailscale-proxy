@@ -1,4 +1,4 @@
-FROM ghcr.io/tailscale/tailscale:v1.104.4
+FROM ghcr.io/tailscale/tailscale:v1.104.7
 
 WORKDIR /config
 
